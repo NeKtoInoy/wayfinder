@@ -33,12 +33,26 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        // Постоянный ключ подписи. Благодаря ему каждый новый APK ставится ПОВЕРХ
+        // старого как обновление (данные сохраняются), без удаления.
+        // Для debug это не секрет — пароли фиксированы, keystore лежит в репе.
+        create("fixed") {
+            storeFile = rootProject.file("keystore/debug.keystore")
+            storePassword = "wayfinder"
+            keyAlias = "wayfinder"
+            keyPassword = "wayfinder"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("fixed")
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("fixed")
         }
     }
 
