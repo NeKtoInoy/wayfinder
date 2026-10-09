@@ -1,0 +1,46 @@
+name: Build debug APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # кнопка "Run workflow" в разделе Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Ставим Gradle в CI — поэтому в репозитории НЕ нужен бинарный wrapper.
+      # Заливать можно только текстовые файлы.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      # Генерируем wrapper (на случай, если какой-то шаг его ждёт), затем собираем.
+      - name: Generate wrapper
+        run: gradle wrapper --gradle-version 8.9
+
+      - name: Build debug APK
+        env:
+          # Чувствительные значения берутся из секретов репозитория.
+          # Они приватны даже у публичного репа и не печатаются в логах.
+          # Нет секретов (форк друга) → пусто → серверные/туннельные зонды выключены.
+          WAYFINDER_SERVERS: ${{ secrets.WAYFINDER_SERVERS }}
+          WAYFINDER_TUNNEL: ${{ secrets.WAYFINDER_TUNNEL }}
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wayfinder-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

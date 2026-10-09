@@ -1,0 +1,15 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+app/build/
+
+# Локальные секреты, если будешь собирать не через CI, а на машине
+secrets.properties
+*.local.properties
+
