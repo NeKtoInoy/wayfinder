@@ -33,6 +33,7 @@ object DnsProbe {
 
     private const val TYPE_A = 1
     private const val TYPE_TXT = 16
+    private const val TYPE_CNAME = 5
     private const val DEFAULT_MS = 4000
 
     /** Запрос записи [type] имени [name] к резолверу [resolver] по UDP:53. */
@@ -125,9 +126,35 @@ object DnsProbe {
                 val l = buf[rd].toInt() and 0xFF
                 if (rd + 1 + l <= len) String(buf, rd + 1, l, Charsets.US_ASCII) else "txt?"
             } else "txt?"
+            TYPE_CNAME -> "CNAME " + readName(buf, rd, len)
             else -> "тип $rType, $rdLen байт"
         }
         return DnsOutcome.OK to ans
+    }
+
+    // Читает доменное имя с учётом сжатия (compression pointers). Нужно для CNAME.
+    private fun readName(buf: ByteArray, start: Int, len: Int): String {
+        val sb = StringBuilder()
+        var p = start
+        var hops = 0
+        while (p < len && hops < 20) {
+            val l = buf[p].toInt() and 0xFF
+            when {
+                l == 0 -> return sb.toString().trimEnd('.')
+                l and 0xC0 == 0xC0 -> {
+                    if (p + 1 >= len) break
+                    p = ((l and 0x3F) shl 8) or (buf[p + 1].toInt() and 0xFF)
+                    hops++
+                }
+                else -> {
+                    if (p + 1 + l > len) break
+                    if (sb.isNotEmpty()) sb.append('.')
+                    sb.append(String(buf, p + 1, l, Charsets.US_ASCII))
+                    p += l + 1
+                }
+            }
+        }
+        return sb.toString().trimEnd('.').ifEmpty { "?" }
     }
 
     private fun skipName(buf: ByteArray, start: Int): Int {

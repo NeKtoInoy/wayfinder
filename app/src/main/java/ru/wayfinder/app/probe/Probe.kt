@@ -10,9 +10,13 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SNIServerName
+import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.SSLParameters
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+import java.security.cert.X509Certificate
 import kotlin.system.measureTimeMillis
 
 /**
@@ -50,6 +54,20 @@ object Probe {
     private const val DEFAULT_CONNECT_MS = 4000
     private const val DEFAULT_TLS_MS = 5000
     private const val DEFAULT_UDP_MS = 2500
+
+    // Доверяем любому сертификату: зонд проверяет, ДОШЛО ли рукопожатие сквозь фильтр,
+    // а не валиден ли сертификат. Иначе самоподписанные/нестандартные серты (напр. Сбер
+    // за балансировщиком) давали бы ложную ошибку, хотя соединение прошло.
+    private val trustAllFactory: SSLSocketFactory by lazy {
+        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        })
+        val ctx = SSLContext.getInstance("TLS")
+        ctx.init(null, trustAll, java.security.SecureRandom())
+        ctx.socketFactory
+    }
 
     // ── TCP: чистый connect на порт, без TLS ────────────────────────────────
     // Таймаут  → фильтр по IP (пакет дропнут у оператора).
@@ -108,8 +126,7 @@ object Probe {
             try {
                 raw = Socket()
                 raw.connect(InetSocketAddress(ip, port), timeoutMs)
-                val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-                val ssl = factory.createSocket(raw, ip, port, true) as SSLSocket
+                val ssl = trustAllFactory.createSocket(raw, ip, port, true) as SSLSocket
                 ssl.soTimeout = timeoutMs
                 // Подставляем нужный SNI вручную, не привязываясь к IP.
                 val params: SSLParameters = ssl.sslParameters

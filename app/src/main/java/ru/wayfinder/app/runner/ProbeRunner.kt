@@ -29,7 +29,7 @@ class ProbeRunner(private val ctx: Context) {
     private val iso = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
     fun runOnce(onProgress: (String) -> Unit = {}): Snapshot {
-        val (lat, lon) = loc.lastKnown()
+        val (lat, lon) = loc.fix()
         val context = netCtx.collect(lat, lon)
         val lines = mutableListOf<ProbeLine>()
 
