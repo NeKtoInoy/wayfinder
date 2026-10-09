@@ -84,19 +84,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runOnce() {
-        append("\n— Снимаю срез…")
+        val started = timeNow()
+        append("\n━━━ РУЧНОЙ СРЕЗ начат $started ━━━")
         ui.launch {
             val snap = withContext(Dispatchers.IO) {
-                runner.runOnce { p -> ui.launch { append("  $p") } }
+                runner.runOnce(source = "manual") { p -> ui.launch { append("  $p") } }
             }
             store.add(snap)
-            append("Вердикт: ${snap.verdict}")
-            append("Зондов: ${snap.probes.size}. В логе: ${store.count()}")
             // Коротко покажем ключевые строки
             snap.probes.filter { it.group == "whitelist" && it.kind == "tls" }
                 .take(6).forEach { append("  ${it.label} → ${it.outcome} (${it.ms}мс)") }
+            append("━━━ РУЧНОЙ СРЕЗ завершён · ${snap.verdict} · зондов ${snap.probes.size} · в логе ${store.count()} ━━━")
         }
     }
+
+    private fun timeNow(): String =
+        java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
 
     private fun exportLog() {
         if (store.count() == 0) { append("Лог пуст."); return }

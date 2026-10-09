@@ -26,6 +26,7 @@ object Json {
         b.append("    \"timestamp\": ${s.timestamp},\n")
         b.append("    \"isoTime\": ${str(s.isoTime)},\n")
         b.append("    \"verdict\": ${str(s.verdict)},\n")
+        b.append("    \"source\": ${str(s.source)},\n")
         b.append("    \"context\": ${ctx(s.context)},\n")
         b.append("    \"probes\": [\n")
         s.probes.forEachIndexed { i, p ->

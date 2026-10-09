@@ -47,7 +47,7 @@ class SamplerService : Service() {
             job = scope.launch {
                 while (isActive) {
                     try {
-                        val snap = runner.runOnce()
+                        val snap = runner.runOnce(source = "background")
                         store.add(snap)
                         updateNotification("Замеров: ${store.count()} · ${snap.verdict}")
                     } catch (_: Exception) {

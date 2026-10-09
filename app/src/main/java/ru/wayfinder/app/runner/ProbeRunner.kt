@@ -28,7 +28,7 @@ class ProbeRunner(private val ctx: Context) {
     private val loc = LocationProvider(ctx)
     private val iso = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
-    fun runOnce(onProgress: (String) -> Unit = {}): Snapshot {
+    fun runOnce(source: String = "manual", onProgress: (String) -> Unit = {}): Snapshot {
         val (lat, lon) = loc.fix()
         val context = netCtx.collect(lat, lon)
         val lines = mutableListOf<ProbeLine>()
@@ -57,7 +57,8 @@ class ProbeRunner(private val ctx: Context) {
             isoTime = iso.format(Date()),
             context = context,
             probes = lines,
-            verdict = verdict
+            verdict = verdict,
+            source = source
         )
     }
 
@@ -121,8 +122,13 @@ class ProbeRunner(private val ctx: Context) {
 
     // ── вспомогательное ────────────────────────────────────────────────────────
 
+    // ВАЖНО: берём именно IPv4 (A-запись). На мобильных сетях эталоны часто
+    // отдаются по IPv6, а белые списки и твой каскад работают по IPv4 — тест по
+    // IPv6-адресу измерял бы не то. Среди всех адресов выбираем первый IPv4.
     private fun resolve(host: String): String? = try {
-        InetAddress.getByName(host).hostAddress
+        InetAddress.getAllByName(host)
+            .firstOrNull { it is java.net.Inet4Address }
+            ?.hostAddress
     } catch (_: Exception) { null }
 
     private fun Probe.ProbeResult.toLine(group: String) = ProbeLine(

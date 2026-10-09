@@ -13,7 +13,8 @@ data class Snapshot(
     val isoTime: String,              // человекочитаемое время
     val context: NetCtx,              // контекст сети на момент замера
     val probes: List<ProbeLine>,      // плоский список всех зондов
-    val verdict: String = ""          // краткий авто-вывод (эвристика), заполняется раннером
+    val verdict: String = "",         // краткий авто-вывод (эвристика), заполняется раннером
+    val source: String = "manual"     // "manual" — кнопка, "background" — фоновый сбор
 ) {
     companion object { const val SCHEMA_VERSION = 1 }
 }
