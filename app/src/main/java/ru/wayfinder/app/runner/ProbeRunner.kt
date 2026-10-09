@@ -51,7 +51,11 @@ class ProbeRunner(private val ctx: Context) {
         onProgress("Твои серверы…")
         probeServers(lines)
 
-        val verdict = heuristicVerdict(lines)
+        val verdict = buildString {
+            // VPN искажает всё — выносим предупреждение в начало вердикта.
+            if (context.vpnActive) append("⚠ ВКЛЮЧЁН VPN — замер недостоверен · ")
+            append(heuristicVerdict(lines))
+        }
         return Snapshot(
             timestamp = System.currentTimeMillis(),
             isoTime = iso.format(Date()),

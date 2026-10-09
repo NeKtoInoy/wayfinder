@@ -66,7 +66,8 @@ class NetworkContext(private val ctx: Context) {
             lat = lat,
             lon = lon,
             resolver = resolver,
-            localIp = localIpv4()
+            localIp = localIpv4(),
+            vpnActive = isVpnActive(cm)
         )
     }
 
@@ -149,6 +150,17 @@ class NetworkContext(private val ctx: Context) {
             exec.shutdownNow()
             out
         } catch (_: Exception) { null }
+    }
+
+    // Включён ли VPN. Через туннель замеры мерят работу VPN, а не самой сети —
+    // поэтому помечаем такие снимки, чтобы их можно было отфильтровать при анализе.
+    private fun isVpnActive(cm: ConnectivityManager?): Boolean {
+        cm ?: return false
+        return try {
+            val net = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(net) ?: return false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        } catch (_: Exception) { false }
     }
 
     private fun firstResolver(link: LinkProperties?): String? {

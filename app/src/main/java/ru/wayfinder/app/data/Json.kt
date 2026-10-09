@@ -51,6 +51,7 @@ object Json {
         f.add("\"lon\": ${num(c.lon)}")
         f.add("\"resolver\": ${str(c.resolver)}")
         f.add("\"localIp\": ${str(c.localIp)}")
+        f.add("\"vpnActive\": ${c.vpnActive}")
         return "{ ${f.joinToString(", ")} }"
     }
 

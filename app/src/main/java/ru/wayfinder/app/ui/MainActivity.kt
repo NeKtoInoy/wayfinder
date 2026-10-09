@@ -157,6 +157,9 @@ class MainActivity : AppCompatActivity() {
                 runner.runOnce(source = "manual") { p -> ui.launch { append("  $p") } }
             }
             store.add(snap)
+            if (snap.context.vpnActive) {
+                append("  ⚠ ВКЛЮЧЁН VPN! Выключи его и повтори — иначе мерим туннель, а не сеть.")
+            }
             // Коротко покажем ключевые строки
             snap.probes.filter { it.group == "whitelist" && it.kind == "tls" }
                 .take(6).forEach { append("  ${it.label} → ${it.outcome} (${it.ms}мс)") }

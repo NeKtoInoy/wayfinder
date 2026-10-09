@@ -30,7 +30,8 @@ data class NetCtx(
     val lat: Double? = null,           // координаты (по разрешению)
     val lon: Double? = null,
     val resolver: String? = null,      // IP DNS-резолвера оператора (его опрашивает DnsProbe)
-    val localIp: String? = null        // локальный IP устройства
+    val localIp: String? = null,       // локальный IP устройства
+    val vpnActive: Boolean = false     // включён ли VPN — через него замеры искажены
 )
 
 /**
