@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.telephony.CellInfo
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
@@ -17,6 +18,9 @@ import androidx.core.content.ContextCompat
 import ru.wayfinder.app.data.NetCtx
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Сбор контекста сети на момент замера. Всё, что требует разрешений
@@ -93,8 +97,11 @@ class NetworkContext(private val ctx: Context) {
     // Возвращает (signalDbm, cellId, lac) из первой подходящей соты.
     @SuppressLint("MissingPermission")
     private fun readCell(tm: TelephonyManager?): Triple<Int?, String?, String?> {
+        if (tm == null) return Triple(null, null, null)
         return try {
-            val list = tm?.allCellInfo ?: return Triple(null, null, null)
+            // На Android 10+ allCellInfo отдаёт устаревший/пустой список, пока не
+            // запросишь свежие данные явно. Делаем это с коротким таймаутом.
+            val list = freshCellInfo(tm) ?: tm.allCellInfo ?: return Triple(null, null, null)
             for (info in list) {
                 when (info) {
                     is CellInfoLte -> return Triple(
@@ -119,6 +126,31 @@ class NetworkContext(private val ctx: Context) {
         } catch (_: Exception) { Triple(null, null, null) }
     }
 
+    // Принудительно запрашивает свежий список сот (API 29+). Без этого на новых
+    // Android сота и сигнал часто приходят пустыми. До API 29 возвращаем null —
+    // там allCellInfo и так свежий.
+    @SuppressLint("MissingPermission")
+    private fun freshCellInfo(tm: TelephonyManager): List<CellInfo>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        return try {
+            val latch = CountDownLatch(1)
+            var out: List<CellInfo>? = null
+            val exec = Executors.newSingleThreadExecutor()
+            tm.requestCellInfoUpdate(exec, object : TelephonyManager.CellInfoCallback() {
+                override fun onCellInfo(cellInfo: MutableList<CellInfo>) {
+                    out = cellInfo
+                    latch.countDown()
+                }
+                override fun onError(errorCode: Int, detail: Throwable?) {
+                    latch.countDown()
+                }
+            })
+            latch.await(3, TimeUnit.SECONDS)
+            exec.shutdownNow()
+            out
+        } catch (_: Exception) { null }
+    }
+
     private fun firstResolver(link: LinkProperties?): String? {
         val dns = link?.dnsServers ?: return null
         // Предпочитаем IPv4-резолвер — с ним DnsProbe работает проще.
@@ -133,9 +165,14 @@ class NetworkContext(private val ctx: Context) {
             ?.hostAddress
     } catch (_: Exception) { null }
 
-    private fun hasPhonePermission(): Boolean =
-        ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_PHONE_STATE) ==
+    // Данные соты на Android 10+ требуют И телефонного разрешения, И геолокации.
+    private fun hasPhonePermission(): Boolean {
+        val phone = ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_PHONE_STATE) ==
             PackageManager.PERMISSION_GRANTED
+        val loc = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        return phone && loc
+    }
 
     @Suppress("unused")
     private fun sdk() = Build.VERSION.SDK_INT

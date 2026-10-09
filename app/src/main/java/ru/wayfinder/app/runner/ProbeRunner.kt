@@ -87,7 +87,12 @@ class ProbeRunner(private val ctx: Context) {
 
     private fun probeSubnets(out: MutableList<ProbeLine>) {
         for (h in ProbeTargets.SUBNETS) {
-            out += Probe.tcpConnect(h.ip, 443, "${h.name} ${h.ip}").toLine("subnet")
+            val ip = resolve(h.note) ?: run {
+                out += ProbeLine("subnet", "tcp", "${h.name} ${h.note}", h.note,
+                    null, "DNS_FAIL", 0, "не разрешился")
+                return@run null
+            } ?: continue
+            out += Probe.tcpConnect(ip, 443, "${h.name} ${h.note}").toLine("subnet")
         }
     }
 
@@ -154,10 +159,24 @@ class ProbeRunner(private val ctx: Context) {
         }
         val whitelistAlive = whitelistTcp.any { it.outcome == "OK" }
 
-        return when {
-            neutralDead && whitelistAlive -> "Похоже на белые списки (фильтр по IP)"
-            !neutralDead -> "Ограничений по IP не видно"
-            else -> "Неоднозначно — смотреть лог"
+        // Фильтр по SNI: запрещённый домен в SNI на белом IP.
+        // RESET = активный сброс фильтром. TIMEOUT тут НЕ фильтр (сервер молчит).
+        val banned = lines.filter {
+            it.group == "whitelist" && it.kind == "tls" && it.sni == "www.instagram.com"
         }
+        val sniReset = banned.count { it.outcome == "RESET" }
+        val sniOk = banned.count { it.outcome == "OK" }
+
+        val base = when {
+            neutralDead && whitelistAlive -> "Белые списки: фильтр по IP"
+            !neutralDead -> "Фильтра по IP нет"
+            else -> "Неоднозначно по IP — смотреть лог"
+        }
+        val sni = when {
+            sniReset > 0 && sniReset >= sniOk -> "DPI по SNI активен (RESET на запрещённый домен)"
+            banned.isNotEmpty() && sniOk == banned.size -> "SNI не фильтруется"
+            else -> "SNI: неоднозначно"
+        }
+        return "$base · $sni"
     }
 }
