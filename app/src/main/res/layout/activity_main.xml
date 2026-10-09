@@ -11,7 +11,17 @@
         android:text="Wayfinder — диагностика ограничений сети"
         android:textSize="18sp"
         android:textStyle="bold"
-        android:paddingBottom="12dp" />
+        android:paddingBottom="8dp" />
+
+    <!-- Блок готовности: заполняется из кода строками "статус + Исправить". -->
+    <LinearLayout
+        android:id="@+id/statusContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#11000000"
+        android:padding="8dp"
+        android:layout_marginBottom="10dp" />
 
     <Button
         android:id="@+id/btnOnce"

@@ -5,7 +5,10 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,11 +39,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var out: TextView
     private lateinit var scroll: ScrollView
+    private lateinit var statusContainer: LinearLayout
     private var sampling = false
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* результат не блокирует работу: нет разрешения — поле просто будет null */ }
+    ) { refreshStatus() }  // после ответа — перерисовать блок готовности
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +55,7 @@ class MainActivity : AppCompatActivity() {
 
         out = findViewById(R.id.output)
         scroll = findViewById(R.id.scroll)
+        statusContainer = findViewById(R.id.statusContainer)
         val btnOnce = findViewById<Button>(R.id.btnOnce)
         val btnBg = findViewById<Button>(R.id.btnBackground)
         val btnExport = findViewById<Button>(R.id.btnExport)
@@ -63,6 +68,10 @@ class MainActivity : AppCompatActivity() {
         btnBg.setOnClickListener {
             sampling = !sampling
             if (sampling) {
+                // Перед долгим фоновым сбором стоит снять ограничения батареи.
+                if (!Readiness.ignoresBattery(this)) {
+                    append("⚠ Для фона лучше снять ограничения батареи — кнопка «Исправить» вверху.")
+                }
                 SamplerService.start(this)
                 btnBg.text = "Остановить фон. сбор"
                 append("Фоновый сбор запущен (каждые 3 мин).")
@@ -80,12 +89,69 @@ class MainActivity : AppCompatActivity() {
             append("Лог очищен.")
         }
 
+        refreshStatus()
         append("Готов. Замеров в логе: ${store.count()}")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Пользователь мог вернуться из системных настроек — обновим галочки.
+        refreshStatus()
+    }
+
+    /** Перерисовывает блок готовности: строка на каждое требование + кнопка «Исправить». */
+    private fun refreshStatus() {
+        statusContainer.removeAllViews()
+        for (item in Readiness.check(this)) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            }
+            val label = TextView(this).apply {
+                text = "${if (item.ok) "✓" else "✗"}  ${item.title}"
+                textSize = 13f
+                setTextColor(if (item.ok) 0xFF2E7D32.toInt() else 0xFFC62828.toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                )
+            }
+            row.addView(label)
+            if (!item.ok) {
+                val fixBtn = Button(this).apply {
+                    text = "Исправить"
+                    textSize = 11f
+                    setOnClickListener { fix(item) }
+                }
+                row.addView(fixBtn)
+            }
+            statusContainer.addView(row)
+        }
+    }
+
+    private fun fix(item: Readiness.Item) {
+        if (item.fix == null) {
+            // Разрешения: сначала пробуем перезапросить; если отклонили «навсегда»,
+            // система просто не покажет диалог — тогда ведём в настройки приложения.
+            requestPermissions()
+            return
+        }
+        try {
+            startActivity(item.fix)
+        } catch (_: Exception) {
+            try { startActivity(Readiness.appDetailsIntent(this)) } catch (_: Exception) {}
+        }
     }
 
     private fun runOnce() {
         val started = timeNow()
         append("\n━━━ РУЧНОЙ СРЕЗ начат $started ━━━")
+        // Мягкое предупреждение: гео выключено — координат в замере не будет.
+        val warn = Readiness.check(this).firstOrNull { !it.ok }
+        if (warn != null) append("  ⚠ ${warn.title}: ${warn.hint} (кнопка «Исправить» вверху)")
         ui.launch {
             val snap = withContext(Dispatchers.IO) {
                 runner.runOnce(source = "manual") { p -> ui.launch { append("  $p") } }
