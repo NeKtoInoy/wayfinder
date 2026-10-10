@@ -91,11 +91,14 @@ class ProbeRunner(private val ctx: Context) {
 
     private fun probeSubnets(out: MutableList<ProbeLine>) {
         for (h in ProbeTargets.SUBNETS) {
-            val ip = resolve(h.note) ?: run {
+            // Резолвим домен; если DNS отравлен/молчит — берём запасной IP из h.ip.
+            var ip = resolve(h.note)
+            if (ip == null || DnsProbe.looksPoisoned(ip)) ip = h.ip.ifEmpty { null }
+            if (ip == null) {
                 out += ProbeLine("subnet", "tcp", "${h.name} ${h.note}", h.note,
-                    null, "DNS_FAIL", 0, "не разрешился")
-                return@run null
-            } ?: continue
+                    null, "DNS_FAIL", 0, "не разрешился и нет запасного IP")
+                continue
+            }
             out += Probe.tcpConnect(ip, 443, "${h.name} ${h.note}").toLine("subnet")
         }
     }
@@ -110,7 +113,16 @@ class ProbeRunner(private val ctx: Context) {
     private fun probeDns(out: MutableList<ProbeLine>, c: NetCtx) {
         val resolver = c.resolver ?: return   // без резолвера оператора DNS-тесты бессмысленны
         for (name in ProbeTargets.DNS_NAMES) {
-            out += DnsProbe.query(name, "A", resolver).toLine("dns")
+            val r = DnsProbe.query(name, "A", resolver)
+            // Детектор подмены: заблокированный домен, отвечающий loopback/приватным
+            // адресом — признак отравления DNS оператором.
+            val blocked = name in ProbeTargets.BLOCKED_DNS_NAMES
+            val ip = r.answer.removePrefix("A ").trim()
+            val poisoned = blocked && r.outcome.name == "OK" && DnsProbe.looksPoisoned(ip)
+            val line = r.toLine("dns")
+            out += if (poisoned)
+                line.copy(outcome = "POISONED", detail = "подмена: $ip")
+            else line
         }
         // Жизнеспособность туннеля — только если задан домен туннеля (из секретов).
         val txt = Config.tunnelTxtName
@@ -181,6 +193,9 @@ class ProbeRunner(private val ctx: Context) {
             banned.isNotEmpty() && sniOk == banned.size -> "SNI не фильтруется"
             else -> "SNI: неоднозначно"
         }
-        return "$base · $sni"
+        // Подмена DNS — отдельный механизм блокировки, выносим в вердикт.
+        val poisoned = lines.count { it.group == "dns" && it.outcome == "POISONED" }
+        val dns = if (poisoned > 0) " · DNS отравлен (подмена ответов)" else ""
+        return "$base · $sni$dns"
     }
 }

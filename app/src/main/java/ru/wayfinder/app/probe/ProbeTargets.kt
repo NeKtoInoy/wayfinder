@@ -34,11 +34,13 @@ object ProbeTargets {
     // провайдера (поле note = домен): раннер резолвит его в IPv4 и проверяет TCP:443.
     // Случайные IP вроде x.x.x.1 бесполезны — на них нет сервера. Если сайт провайдера
     // доступен под белыми списками, его подсети, скорее всего, в списке.
+    // ip = запасной адрес на случай, если DNS отравлен и домен не резолвится
+    // (у друга на Tele2 cloud.yandex.ru не разрешался из-за подмены DNS).
     val SUBNETS = listOf(
-        Host("Yandex Cloud", "", "cloud.yandex.ru"),
-        Host("VK Cloud", "", "mcs.mail.ru"),
-        Host("Selectel", "", "selectel.ru"),
-        Host("Timeweb", "", "timeweb.com"),
+        Host("Yandex Cloud", "213.180.204.1", "cloud.yandex.ru"),
+        Host("VK Cloud", "95.163.254.192", "mcs.mail.ru"),
+        Host("Selectel", "85.119.149.3", "selectel.ru"),
+        Host("Timeweb", "185.65.148.89", "timeweb.com"),
     )
 
     // SNI для TLS-зонда на один IP. Ключевой вопрос — совпадает ли результат
@@ -57,6 +59,9 @@ object ProbeTargets {
         "www.instagram.com",     // заблокированный
         "rutracker.org",         // заблокированный
     )
+
+    // Заблокированные домены — для них подставной IP в ответе = подмена DNS.
+    val BLOCKED_DNS_NAMES = setOf("www.instagram.com", "rutracker.org")
 
     // Домен туннеля больше не здесь — он чувствительный и живёт в Config
     // (приходит из секретов сборки), чтобы можно было держать репозиторий открытым.

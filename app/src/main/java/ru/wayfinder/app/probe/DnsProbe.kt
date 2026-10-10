@@ -19,7 +19,26 @@ import kotlin.system.measureTimeMillis
  */
 object DnsProbe {
 
-    enum class DnsOutcome { OK, TIMEOUT, REFUSED, NXDOMAIN, TRUNCATED, FORMERR, EMPTY, OTHER }
+    enum class DnsOutcome { OK, TIMEOUT, REFUSED, NXDOMAIN, TRUNCATED, FORMERR, EMPTY, POISONED, OTHER }
+
+    /**
+     * Похож ли ответ на подмену DNS (отравление). Операторы часто отдают на
+     * заблокированный домен фейковый адрес: loopback (127.x), «any» (0.0.0.0),
+     * приватные диапазоны или адрес своей заглушки. Для публичного домена такой
+     * ответ почти наверняка подставной.
+     */
+    fun looksPoisoned(ip: String): Boolean {
+        val p = ip.split(".").mapNotNull { it.toIntOrNull() }
+        if (p.size != 4) return false
+        return when {
+            p[0] == 127 -> true                       // loopback, напр. 127.0.0.2
+            p[0] == 0 -> true                          // 0.0.0.0
+            p[0] == 10 -> true                         // приватная 10/8
+            p[0] == 192 && p[1] == 168 -> true         // 192.168/16
+            p[0] == 172 && p[1] in 16..31 -> true      // 172.16/12
+            else -> false
+        }
+    }
 
     data class DnsResult(
         val label: String,
