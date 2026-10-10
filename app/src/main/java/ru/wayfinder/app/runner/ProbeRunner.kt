@@ -239,9 +239,12 @@ class ProbeRunner(private val ctx: Context) {
         // Итог перебора SNI-доноров.
         val scan = lines.filter { it.group == "sniscan" && it.kind == "tls" }
         val aborted = lines.any { it.group == "sniscan" && it.outcome == "ABORTED" }
-        // Здоровье домашнего TLS: если российские рукопожатия в основном проходят,
-        // то массовый провал зарубежного скана — это блокировка, а не слабая сеть.
-        val homeTls = lines.filter { it.group == "whitelist" && it.kind == "tls" && it.sni == "" }
+        // Здоровье домашнего TLS: если российские рукопожатия с РОДНЫМ SNI в основном
+        // проходят, то массовый провал зарубежного скана — это блокировка, а не слабая
+        // сеть. Родной SNI = метка содержит "[родной" (его sni равен имени домена, а не "").
+        val homeTls = lines.filter {
+            it.group == "whitelist" && it.kind == "tls" && it.label.contains("[родной")
+        }
         val homeOk = homeTls.count { it.outcome == "OK" }
         val homeHealthy = homeTls.isNotEmpty() && homeOk >= homeTls.size - 1
 
