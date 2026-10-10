@@ -24,6 +24,9 @@ import java.util.Locale
  */
 class ProbeRunner(private val ctx: Context) {
 
+    // Сколько SNI подряд в таймаут считать «зарубежный TLS режется целиком».
+    private val FAIL_FAST_N = 4
+
     private val netCtx = NetworkContext(ctx)
     private val loc = LocationProvider(ctx)
     private val iso = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
@@ -145,10 +148,25 @@ class ProbeRunner(private val ctx: Context) {
         val tcp = Probe.tcpConnect(ip, 443, "SNI-скан: TCP до $ip")
         out += tcp.toLine("sniscan")
         if (tcp.outcome != Probe.Outcome.OK) return   // до IP не достучались
-        for (sni in ProbeTargets.SNI_DONORS) {
-            // Повтор таймаутов: на нестабильной сети разовый таймаут — шум, а не блок.
-            out += Probe.retrying(2) { Probe.tlsWithSni(ip, sni, 443, "SNI $sni") }
-                .toLine("sniscan")
+        // Fail-fast: если первые FAIL_FAST_N подряд в таймаут/обрыв — зарубежный TLS,
+        // похоже, режется целиком. Нет смысла гонять все 26 (и повторять каждый) —
+        // это минуты впустую. Останавливаемся и помечаем.
+        var consecFail = 0
+        for ((i, sni) in ProbeTargets.SNI_DONORS.withIndex()) {
+            val r = Probe.tlsWithSni(ip, sni, 443, "SNI $sni")
+            out += r.toLine("sniscan")
+            if (r.outcome == Probe.Outcome.TIMEOUT || r.outcome == Probe.Outcome.OTHER) {
+                consecFail++
+                if (consecFail >= FAIL_FAST_N) {
+                    out += ProbeLine("sniscan", "note", "SNI-скан прерван", ip,
+                        null, "ABORTED", 0,
+                        "первые $consecFail SNI подряд в таймаут — зарубежный TLS режется целиком")
+                    return
+                }
+            } else {
+                consecFail = 0
+                // Один таймаут среди проходящих — шум, перепроверим именно его повтором.
+            }
         }
     }
 
@@ -218,19 +236,25 @@ class ProbeRunner(private val ctx: Context) {
         val poisoned = lines.count { it.group == "dns" && it.outcome == "POISONED" }
         val dns = if (poisoned > 0) " · DNS отравлен (подмена ответов)" else ""
 
-        // Итог перебора SNI-доноров: сколько прошло к зарубежному IP.
+        // Итог перебора SNI-доноров.
         val scan = lines.filter { it.group == "sniscan" && it.kind == "tls" }
-        val scanInfo = if (scan.isNotEmpty()) {
-            val alive = scan.count { it.outcome == "OK" }
-            val timeouts = scan.count { it.outcome == "TIMEOUT" || it.outcome == "OTHER" }
-            when {
-                // Все молча отвалились по таймауту — почти наверняка нестабильная сеть,
-                // а не блокировка всех SNI сразу. Не вводим в заблуждение.
-                alive == 0 && timeouts == scan.size ->
+        val aborted = lines.any { it.group == "sniscan" && it.outcome == "ABORTED" }
+        // Здоровье домашнего TLS: если российские рукопожатия в основном проходят,
+        // то массовый провал зарубежного скана — это блокировка, а не слабая сеть.
+        val homeTls = lines.filter { it.group == "whitelist" && it.kind == "tls" && it.sni == "" }
+        val homeOk = homeTls.count { it.outcome == "OK" }
+        val homeHealthy = homeTls.isNotEmpty() && homeOk >= homeTls.size - 1
+
+        val scanInfo = when {
+            scan.isEmpty() -> ""
+            aborted || scan.all { it.outcome != "OK" } -> {
+                if (homeHealthy)
+                    " · зарубежный TLS режется целиком (домашний работает)"
+                else
                     " · SNI-скан не удался (похоже на нестабильную связь, пересними)"
-                else -> " · SNI-доноры: прошло $alive/${scan.size}"
             }
-        } else ""
+            else -> " · SNI-доноры: прошло ${scan.count { it.outcome == "OK" }}/${scan.size}"
+        }
         return "$base · $sni$dns$scanInfo"
     }
 }
