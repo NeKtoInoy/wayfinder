@@ -52,6 +52,24 @@ object ProbeTargets {
         SniCase("белый-чужой", "vk.com"),       // разрешён, но не родной для IP
     )
 
+    // Расширенный перебор SNI-доноров: прогоняется TLS к зарубежному IP с каждым
+    // из этих имён. Какие проходят — те «живые» как SNI сквозь фильтр оператора.
+    // Нужно, чтобы понять, какие домены вообще пропускаются (диагностика фильтрации
+    // по имени), а какие молча режутся.
+    val SNI_DONORS = listOf(
+        // российские
+        "ya.ru", "yandex.ru", "dzen.ru", "vk.com", "vk.ru", "mail.ru", "ok.ru",
+        "avito.ru", "ozon.ru", "wildberries.ru", "gosuslugi.ru", "sberbank.ru",
+        "vtb.ru", "tbank.ru", "rutube.ru", "kinopoisk.ru", "2gis.ru", "rzd.ru",
+        // зарубежные / глобальные
+        "amazon.com", "www.microsoft.com", "www.apple.com", "www.google.com",
+        "github.com", "www.cloudflare.com", "www.samsung.com", "www.yahoo.com",
+    )
+
+    // IP, к которому ведётся перебор SNI-доноров (нейтральный зарубежный узел,
+    // принимающий TCP:443). Берётся из нейтральных целей.
+    const val SNI_SCAN_IP = "1.1.1.1"
+
     // Домены для проверки работы DNS-резолвера оператора.
     val DNS_NAMES = listOf(
         "ya.ru",                 // белый

@@ -48,6 +48,9 @@ class ProbeRunner(private val ctx: Context) {
         onProgress("DNS…")
         probeDns(lines, context)
 
+        onProgress("Перебор SNI-доноров…")
+        probeSniScan(lines)
+
         onProgress("Твои серверы…")
         probeServers(lines)
 
@@ -131,6 +134,19 @@ class ProbeRunner(private val ctx: Context) {
         if (long != null) out += DnsProbe.query(long, "A", resolver, "туннель длинный").toLine("tunnel")
     }
 
+    // Перебор SNI-доноров к зарубежному IP. Какие имена проходят TLS, а какие
+    // молча режутся фильтром оператора по имени. Сначала проверяем, что до IP
+    // вообще есть TCP — иначе перебор бессмыслен (режется сам IP).
+    private fun probeSniScan(out: MutableList<ProbeLine>) {
+        val ip = ProbeTargets.SNI_SCAN_IP
+        val tcp = Probe.tcpConnect(ip, 443, "SNI-скан: TCP до $ip")
+        out += tcp.toLine("sniscan")
+        if (tcp.outcome != Probe.Outcome.OK) return   // до IP не достучались
+        for (sni in ProbeTargets.SNI_DONORS) {
+            out += Probe.tlsWithSni(ip, sni, 443, "SNI $sni").toLine("sniscan")
+        }
+    }
+
     private fun probeServers(out: MutableList<ProbeLine>) {
         // Твои узлы берутся из Config (из секретов сборки). Пусто → блок пропускается,
         // поэтому у друзей без твоих секретов этих зондов просто нет.
@@ -196,6 +212,13 @@ class ProbeRunner(private val ctx: Context) {
         // Подмена DNS — отдельный механизм блокировки, выносим в вердикт.
         val poisoned = lines.count { it.group == "dns" && it.outcome == "POISONED" }
         val dns = if (poisoned > 0) " · DNS отравлен (подмена ответов)" else ""
-        return "$base · $sni$dns"
+
+        // Итог перебора SNI-доноров: сколько прошло к зарубежному IP.
+        val scan = lines.filter { it.group == "sniscan" && it.kind == "tls" }
+        val scanInfo = if (scan.isNotEmpty()) {
+            val alive = scan.count { it.outcome == "OK" }
+            " · SNI-доноры: прошло $alive/${scan.size}"
+        } else ""
+        return "$base · $sni$dns$scanInfo"
     }
 }
