@@ -8,7 +8,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Wayfinder — диагностика ограничений сети"
+        android:text="Wayfinder — мониторинг качества сети"
         android:textSize="18sp"
         android:textStyle="bold"
         android:paddingBottom="8dp" />

@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity() {
             }
             store.add(snap)
             if (snap.context.vpnActive) {
-                append("  ⚠ ВКЛЮЧЁН VPN! Выключи его и повтори — иначе мерим туннель, а не сеть.")
+                append("  ⚠ Активен VPN — замер идёт через него. Для чистых данных отключи VPN и повтори.")
             }
             // Коротко покажем ключевые строки
             snap.probes.filter { it.group == "whitelist" && it.kind == "tls" }
