@@ -55,6 +55,28 @@ object Probe {
     private const val DEFAULT_TLS_MS = 5000
     private const val DEFAULT_UDP_MS = 2500
 
+    // Исходы, которые на мобильной сети часто означают потерю пакета (шум), а не
+    // настоящую блокировку. Их стоит перепроверить повтором.
+    private val FLAKY = setOf(Outcome.TIMEOUT, Outcome.OTHER)
+
+    /**
+     * Выполняет зонд и, если исход «шумный» (таймаут/обрыв), повторяет до [attempts]
+     * раз. Реальная блокировка стабильна и повторится; разовая потеря из-за слабого
+     * сигнала на повторе пройдёт. Возвращает лучший исход (OK важнее таймаута).
+     */
+    fun retrying(attempts: Int = 2, probe: () -> ProbeResult): ProbeResult {
+        var last = probe()
+        var n = 1
+        while (last.outcome in FLAKY && n < attempts) {
+            val again = probe()
+            // OK или явный RESET/REFUSED информативнее таймаута — берём их.
+            if (again.outcome !in FLAKY) return again
+            last = again
+            n++
+        }
+        return last
+    }
+
     // Доверяем любому сертификату: зонд проверяет, ДОШЛО ли рукопожатие сквозь фильтр,
     // а не валиден ли сертификат. Иначе самоподписанные/нестандартные серты (напр. Сбер
     // за балансировщиком) давали бы ложную ошибку, хотя соединение прошло.

@@ -57,6 +57,9 @@ class ProbeRunner(private val ctx: Context) {
         val verdict = buildString {
             // VPN искажает всё — выносим предупреждение в начало вердикта.
             if (context.vpnActive) append("⚠ ВКЛЮЧЁН VPN — замер недостоверен · ")
+            // Слабый сигнал даёт ложные таймауты — предупреждаем.
+            val sig = context.signalDbm
+            if (sig != null && sig <= -100) append("⚠ слабый сигнал ($sig dBm), возможны ложные таймауты · ")
             append(heuristicVerdict(lines))
         }
         return Snapshot(
@@ -143,7 +146,9 @@ class ProbeRunner(private val ctx: Context) {
         out += tcp.toLine("sniscan")
         if (tcp.outcome != Probe.Outcome.OK) return   // до IP не достучались
         for (sni in ProbeTargets.SNI_DONORS) {
-            out += Probe.tlsWithSni(ip, sni, 443, "SNI $sni").toLine("sniscan")
+            // Повтор таймаутов: на нестабильной сети разовый таймаут — шум, а не блок.
+            out += Probe.retrying(2) { Probe.tlsWithSni(ip, sni, 443, "SNI $sni") }
+                .toLine("sniscan")
         }
     }
 
@@ -217,7 +222,14 @@ class ProbeRunner(private val ctx: Context) {
         val scan = lines.filter { it.group == "sniscan" && it.kind == "tls" }
         val scanInfo = if (scan.isNotEmpty()) {
             val alive = scan.count { it.outcome == "OK" }
-            " · SNI-доноры: прошло $alive/${scan.size}"
+            val timeouts = scan.count { it.outcome == "TIMEOUT" || it.outcome == "OTHER" }
+            when {
+                // Все молча отвалились по таймауту — почти наверняка нестабильная сеть,
+                // а не блокировка всех SNI сразу. Не вводим в заблуждение.
+                alive == 0 && timeouts == scan.size ->
+                    " · SNI-скан не удался (похоже на нестабильную связь, пересними)"
+                else -> " · SNI-доноры: прошло $alive/${scan.size}"
+            }
         } else ""
         return "$base · $sni$dns$scanInfo"
     }
